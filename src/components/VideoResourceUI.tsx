@@ -34,6 +34,9 @@ export default function VideoResourceUI({ res }: props) {
   const [grayscale, setGrayscale] = useState(res.grayscale);
   const [hueRotation, setHueRotation] = useState(res.hueRotation);
   const [contrast, setContrast] = useState(res.contrast);
+  const [invert, setInvert] = useState(res.invert);
+  const [saturate, setSaturate] = useState(res.saturate);
+  const [sepia, setSepia] = useState(res.sepia);
 
   useEffect(() => {
     const $subs: Subscription[] = [];
@@ -70,6 +73,9 @@ export default function VideoResourceUI({ res }: props) {
     $subs.push(res.on("CHANGE_FILTER_GRAYSCALE", () => setGrayscale(res.grayscale)));
     $subs.push(res.on("CHANGE_FILTER_HUEROTATION", () => setHueRotation(res.hueRotation)));
     $subs.push(res.on("CHANGE_FILTER_CONTRAST", () => setContrast(res.contrast)));
+    $subs.push(res.on("CHANGE_FILTER_INVERT", () => setInvert(res.invert)));
+    $subs.push(res.on("CHANGE_FILTER_SATURATE", () => setSaturate(res.saturate)));
+    $subs.push(res.on("CHANGE_FILTER_SEPIA", () => setSepia(res.sepia)));
 
     return () => $subs.forEach(($sub) => $sub.unsubscribe());
   }, []);
@@ -188,6 +194,18 @@ export default function VideoResourceUI({ res }: props) {
       <label>
         Filter contrast ({contrast})
         <input type="range" min={0} max={100} value={res.contrast} onChange={(e) => (res.contrast = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Filter invert ({invert})
+        <input type="range" min={0} max={100} value={res.invert} onChange={(e) => (res.invert = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Filter saturate ({saturate})
+        <input type="range" min={0} max={300} value={res.saturate} onChange={(e) => (res.saturate = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Filter sepia ({sepia})
+        <input type="range" min={0} max={100} value={res.sepia} onChange={(e) => (res.sepia = parseInt(e.target.value))} />
       </label>
     </div>
   );

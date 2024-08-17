@@ -27,6 +27,9 @@ interface TypeAnimationFrame {
   grayscale: number;
   hueRotation: number;
   contrast: number;
+  invert: number;
+  saturate: number;
+  sepia: number;
 }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const states = ["UNLOAD", "STOP", "LOADERROR", "PLAYING", "RECORDING"] as const;
@@ -58,6 +61,9 @@ const events = [
   "CHANGE_FILTER_GRAYSCALE",
   "CHANGE_FILTER_HUEROTATION",
   "CHANGE_FILTER_CONTRAST",
+  "CHANGE_FILTER_INVERT",
+  "CHANGE_FILTER_SATURATE",
+  "CHANGE_FILTER_SEPIA",
 ] as const;
 type TypeEvent = (typeof events)[number];
 
@@ -108,6 +114,9 @@ export default class {
       grayscale: 0,
       hueRotation: 0,
       contrast: 100,
+      invert: 0,
+      saturate: 100,
+      sepia: 0,
     },
   ];
   /**
@@ -375,6 +384,9 @@ export default class {
         this.fire("CHANGE_FILTER_GRAYSCALE");
         this.fire("CHANGE_FILTER_HUEROTATION");
         this.fire("CHANGE_FILTER_CONTRAST");
+        this.fire("CHANGE_FILTER_INVERT");
+        this.fire("CHANGE_FILTER_SATURATE");
+        this.fire("CHANGE_FILTER_SEPIA");
       }
     }
   }
@@ -382,7 +394,7 @@ export default class {
   get animationIndex() {
     return this.#animationIndex;
   }
-
+  //blur
   set blur(newValue: number) {
     const curr = this.#animations[this.#animationIndex].blur;
     if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 5) {
@@ -394,6 +406,7 @@ export default class {
     return this.#animations[this.#animationIndex].blur;
   }
 
+  //brightness
   set brightness(newValue: number) {
     const curr = this.#animations[this.#animationIndex].brightness;
     if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 300) {
@@ -405,6 +418,7 @@ export default class {
     return this.#animations[this.#animationIndex].brightness;
   }
 
+  //grayscale
   set grayscale(newValue: number) {
     const curr = this.#animations[this.#animationIndex].grayscale;
     if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 100) {
@@ -415,6 +429,8 @@ export default class {
   get grayscale() {
     return this.#animations[this.#animationIndex].grayscale;
   }
+
+  //hueRotation
   set hueRotation(newValue: number) {
     const curr = this.#animations[this.#animationIndex].hueRotation;
     if (this.state !== "RECORDING" && newValue !== curr) {
@@ -427,6 +443,7 @@ export default class {
     return this.#animations[this.#animationIndex].hueRotation;
   }
 
+  //contrast
   set contrast(newValue: number) {
     const curr = this.#animations[this.#animationIndex].contrast;
     if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 100) {
@@ -436,6 +453,42 @@ export default class {
   }
   get contrast() {
     return this.#animations[this.#animationIndex].contrast;
+  }
+
+  //invert
+  set invert(newValue: number) {
+    const curr = this.#animations[this.#animationIndex].invert;
+    if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 100) {
+      this.#animations[this.#animationIndex].invert = newValue;
+      this.fire("CHANGE_FILTER_INVERT");
+    }
+  }
+  get invert() {
+    return this.#animations[this.#animationIndex].invert;
+  }
+
+  //saturate
+  set saturate(newValue: number) {
+    const curr = this.#animations[this.#animationIndex].saturate;
+    if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 300) {
+      this.#animations[this.#animationIndex].saturate = newValue;
+      this.fire("CHANGE_FILTER_SATURATE");
+    }
+  }
+  get saturate() {
+    return this.#animations[this.#animationIndex].saturate;
+  }
+
+  //sepia
+  set sepia(newValue: number) {
+    const curr = this.#animations[this.#animationIndex].sepia;
+    if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0 && newValue <= 100) {
+      this.#animations[this.#animationIndex].sepia = newValue;
+      this.fire("CHANGE_FILTER_SEPIA");
+    }
+  }
+  get sepia() {
+    return this.#animations[this.#animationIndex].sepia;
   }
 
   /**
@@ -500,24 +553,21 @@ export default class {
         }
       });
       tl.seek((seek - this.offsetTime) / 1000);
+      context.rotate(0.2);
+      context.translate(animated.outputX, animated.outputY);
       context.filter = `
       blur(${animated.blur}px) 
       brightness(${animated.brightness}%) 
       grayscale(${animated.grayscale}%) 
       hue-rotate(${animated.hueRotation}deg) 
-      contrast(${animated.contrast}%)
+      contrast(${animated.contrast}%) 
+      invert(${animated.invert}%) 
+      saturate(${animated.saturate}%) 
+      sepia(${animated.sepia}%)
       `;
-      context.drawImage(
-        this.containerVideo,
-        animated.cropImageX,
-        animated.cropImageY,
-        animated.cropImageW,
-        animated.cropImageH,
-        animated.outputX,
-        animated.outputY,
-        animated.outputWidth,
-        animated.outputHeight
-      );
+      context.drawImage(this.containerVideo, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
+      context.rotate(-0.2);
+      context.translate(-animated.outputX, -animated.outputY);
 
       tl.kill();
     } else {
