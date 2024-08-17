@@ -2,10 +2,10 @@ import Clock from "./Clock";
 import EventListener from "./EventListener";
 import VideoResource from "./VideoResource";
 
-const states = ["STOP", "PLAYING"] as const;
+const states = ["STOP", "PLAYING", "RECORDING"] as const;
 type TypeState = (typeof states)[number];
 
-const events = ["CHANGE_STATE", "CHANGE_RESOURSE", "HOT_PLAYING"] as const;
+const events = ["CHANGE_STATE", "CHANGE_RESOURSE", "HOT_PLAYING", "CHANGE_SCALE", "CHANGE_OFFSETX", "CHANGE_OFFSETY"] as const;
 type TypeEvent = (typeof events)[number];
 
 export default class {
@@ -24,6 +24,40 @@ export default class {
   timeStart = 0;
   timeEnd = 16000;
   currentTime = 0;
+
+  #scale = 1;
+  #offsetX = 0;
+  #offsetY = 0;
+
+  set scale(newValue: number) {
+    if (newValue !== this.#scale && this.state !== "RECORDING") {
+      this.#scale = newValue;
+      this.fire("CHANGE_SCALE");
+    }
+  }
+  get scale() {
+    return this.#scale;
+  }
+
+  set offsetX(newValue: number) {
+    if (newValue !== this.#offsetX && this.state !== "RECORDING") {
+      this.#offsetX = newValue;
+      this.fire("CHANGE_OFFSETX");
+    }
+  }
+  get offsetX() {
+    return this.#offsetX;
+  }
+
+  set offsetY(newValue: number) {
+    if (newValue !== this.#offsetY && this.state !== "RECORDING") {
+      this.#offsetY = newValue;
+      this.fire("CHANGE_OFFSETY");
+    }
+  }
+  get offsetY() {
+    return this.#offsetY;
+  }
 
   set state(newState: TypeState) {
     if (states.includes(newState)) {
@@ -97,37 +131,38 @@ export default class {
   emit() {
     if (this.context) {
       this.currentTime = this.clock.getElapsedTime();
+
       //Si ha terminado la emision
       if (this.currentTime >= this.timeEnd) {
         this.pause();
         this.clock.setSeeking(0);
       }
-      //!Ojo con este evento se dispara 60 veces por segundo
-      this.fire("HOT_PLAYING");
-      //Clear
-      this.setupContext();
+
+      //addMutations
+      this.context.clearRect(0, 0, this.width, this.height);
+      this.context.save();
+      this.context.scale(this.scale, this.scale);
+      this.context.translate(this.offsetX, this.offsetY);
+
+      //Background
+      this.context.save();
       this.context.fillStyle = this.background;
       this.context.fillRect(0, 0, this.width, this.height);
+      this.context.restore();
+
+      this.#resources.forEach((resource) => {
+        if (this.context) {
+          return resource.emit(this.context, this.currentTime, this.state === "PLAYING");
+        }
+      });
+      this.context.restore();
+      //!Ojo con este evento se dispara 60 veces por segundo
+      this.fire("HOT_PLAYING");
     }
-    this.#resources.forEach((resource) => {
-      if (this.context) {
-        this.setupContext();
-        return resource.emit(this.context, this.currentTime, this.state === "PLAYING");
-      }
-    });
 
     setTimeout(() => {
       this.emit();
     }, 1000 / this.fps);
-  }
-
-  setupContext() {
-    if (this.context) {
-      this.context.filter = "none";
-      this.context.fillStyle = "";
-      this.context.strokeStyle = "";
-      this.context.font = "";
-    }
   }
 
   recording() {

@@ -17,6 +17,8 @@ interface TypeAnimationFrame {
   outputHeight: number;
   outputX: number;
   outputY: number;
+  outputRotate: number;
+  opacity: number;
 
   timePoint: number;
   timeAnimation: number;
@@ -30,6 +32,11 @@ interface TypeAnimationFrame {
   invert: number;
   saturate: number;
   sepia: number;
+
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  shadowBlur: number;
+  shadowColor: string;
 }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const states = ["UNLOAD", "STOP", "LOADERROR", "PLAYING", "RECORDING"] as const;
@@ -44,6 +51,8 @@ const events = [
   "CHANGE_OUTPUTY",
   "CHANGE_OUTPUT_WIDTH",
   "CHANGE_OUTPUT_HEIGHT",
+  "CHANGE_OUTPUT_ROTATE",
+  "CHANGE_OPACITY",
   "CHANGE_CROP_IMAGE_X",
   "CHANGE_CROP_IMAGE_Y",
   "CHANGE_CROP_IMAGE_W",
@@ -64,6 +73,10 @@ const events = [
   "CHANGE_FILTER_INVERT",
   "CHANGE_FILTER_SATURATE",
   "CHANGE_FILTER_SEPIA",
+  "CHANGE_SHADOW_X",
+  "CHANGE_SHADOW_Y",
+  "CHANGE_SHADOW_BLUR",
+  "CHANGE_SHADOW_COLOR",
 ] as const;
 type TypeEvent = (typeof events)[number];
 
@@ -104,6 +117,8 @@ export default class {
       outputHeight: 140,
       outputX: 0,
       outputY: 0,
+      outputRotate: 0,
+      opacity: 100,
       //animation
       ease: "none",
       timePoint: 0,
@@ -117,6 +132,11 @@ export default class {
       invert: 0,
       saturate: 100,
       sepia: 0,
+      //shadow
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      shadowBlur: 0,
+      shadowColor: "hsla(61, 33%, 65%, 1)",
     },
   ];
   /**
@@ -191,6 +211,36 @@ export default class {
   }
   get outputHeight() {
     return this.#animations[this.#animationIndex].outputHeight;
+  }
+
+  //outputRotate
+  set outputRotate(newValue: number) {
+    if (this.state !== "RECORDING") {
+      const curr = this.#animations[this.#animationIndex].outputRotate;
+
+      if (newValue !== curr) {
+        this.#animations[this.#animationIndex].outputRotate = newValue;
+        this.fire("CHANGE_OUTPUT_ROTATE");
+      }
+    }
+  }
+  get outputRotate() {
+    return this.#animations[this.#animationIndex].outputRotate;
+  }
+
+  //opacity
+  set opacity(newValue: number) {
+    if (this.state !== "RECORDING" && newValue <= 100 && newValue >= 0) {
+      const curr = this.#animations[this.#animationIndex].opacity;
+
+      if (newValue !== curr) {
+        this.#animations[this.#animationIndex].opacity = newValue;
+        this.fire("CHANGE_OPACITY");
+      }
+    }
+  }
+  get opacity() {
+    return this.#animations[this.#animationIndex].opacity;
   }
 
   //cropImageX
@@ -374,6 +424,8 @@ export default class {
         this.fire("CHANGE_OUTPUTY");
         this.fire("CHANGE_OUTPUT_HEIGHT");
         this.fire("CHANGE_OUTPUT_WIDTH");
+        this.fire("CHANGE_OUTPUT_ROTATE");
+        this.fire("CHANGE_OPACITY");
         //TIME
         this.fire("CHANGE_TIME_POINT");
         this.fire("CHANGE_TIME_ANIMATION");
@@ -387,6 +439,11 @@ export default class {
         this.fire("CHANGE_FILTER_INVERT");
         this.fire("CHANGE_FILTER_SATURATE");
         this.fire("CHANGE_FILTER_SEPIA");
+        //SHADOW
+        this.fire("CHANGE_SHADOW_X");
+        this.fire("CHANGE_SHADOW_Y");
+        this.fire("CHANGE_SHADOW_BLUR");
+        this.fire("CHANGE_SHADOW_COLOR");
       }
     }
   }
@@ -491,6 +548,54 @@ export default class {
     return this.#animations[this.#animationIndex].sepia;
   }
 
+  //shadowOffsetX
+  set shadowOffsetX(newValue: number) {
+    const curr = this.#animations[this.#animationIndex].shadowOffsetX;
+    if (this.state !== "RECORDING" && newValue !== curr) {
+      this.#animations[this.#animationIndex].shadowOffsetX = newValue;
+      this.fire("CHANGE_SHADOW_X");
+    }
+  }
+  get shadowOffsetX() {
+    return this.#animations[this.#animationIndex].shadowOffsetX;
+  }
+
+  //shadowOffsetY
+  set shadowOffsetY(newValue: number) {
+    const curr = this.#animations[this.#animationIndex].shadowOffsetY;
+    if (this.state !== "RECORDING" && newValue !== curr) {
+      this.#animations[this.#animationIndex].shadowOffsetY = newValue;
+      this.fire("CHANGE_SHADOW_Y");
+    }
+  }
+  get shadowOffsetY() {
+    return this.#animations[this.#animationIndex].shadowOffsetY;
+  }
+
+  //shadowBlur
+  set shadowBlur(newValue: number) {
+    const curr = this.#animations[this.#animationIndex].shadowBlur;
+    if (this.state !== "RECORDING" && newValue !== curr && newValue >= 0) {
+      this.#animations[this.#animationIndex].shadowBlur = newValue;
+      this.fire("CHANGE_SHADOW_BLUR");
+    }
+  }
+  get shadowBlur() {
+    return this.#animations[this.#animationIndex].shadowBlur;
+  }
+
+  //shadowColor
+  set shadowColor(newValue: string) {
+    const curr = this.#animations[this.#animationIndex].shadowColor;
+    if (this.state !== "RECORDING" && newValue !== curr) {
+      this.#animations[this.#animationIndex].shadowColor = newValue;
+      this.fire("CHANGE_SHADOW_COLOR");
+    }
+  }
+  get shadowColor() {
+    return this.#animations[this.#animationIndex].shadowColor;
+  }
+
   /**
    * ______________________________________________Metodos para eventos,listeners,observables
    */
@@ -553,8 +658,11 @@ export default class {
         }
       });
       tl.seek((seek - this.offsetTime) / 1000);
-      context.rotate(0.2);
+      context.save();
+
       context.translate(animated.outputX, animated.outputY);
+
+      context.rotate((animated.outputRotate * Math.PI) / 180);
       context.filter = `
       blur(${animated.blur}px) 
       brightness(${animated.brightness}%) 
@@ -563,11 +671,12 @@ export default class {
       contrast(${animated.contrast}%) 
       invert(${animated.invert}%) 
       saturate(${animated.saturate}%) 
-      sepia(${animated.sepia}%)
+      sepia(${animated.sepia}%) 
+      opacity(${animated.opacity}%)
+      drop-shadow(${animated.shadowOffsetX}px ${animated.shadowOffsetY}px ${animated.shadowBlur}px ${animated.shadowColor})
       `;
       context.drawImage(this.containerVideo, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
-      context.rotate(-0.2);
-      context.translate(-animated.outputX, -animated.outputY);
+      context.restore();
 
       tl.kill();
     } else {

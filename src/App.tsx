@@ -10,6 +10,9 @@ function App() {
   const control = useMemo(() => new Control(), []);
 
   const [resources, setResources] = useState<VideoResource[]>([]);
+  const [scale, setScale] = useState(control.scale);
+  const [offsetX, setOffsetX] = useState(control.offsetX);
+  const [offsetY, setOffsetY] = useState(control.offsetY);
 
   //HandleFiles
   const loadFile: ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -46,7 +49,9 @@ function App() {
       })
     );
     $subs.push(control.on("HOT_PLAYING", handleBar));
-
+    $subs.push(control.on("CHANGE_SCALE", () => setScale(control.scale)));
+    $subs.push(control.on("CHANGE_OFFSETX", () => setOffsetX(control.offsetX)));
+    $subs.push(control.on("CHANGE_OFFSETY", () => setOffsetY(control.offsetY)));
     return () => $subs.forEach(($sub) => $sub.unsubscribe());
   }, []);
 
@@ -54,6 +59,20 @@ function App() {
     <>
       <div style={{ position: "fixed", top: 0, right: 0 }}>
         <input type="file" onChange={loadFile} />
+        <div>
+          <label>
+            Zoom
+            <input type="range" min={0} max={4} value={control.scale} onChange={(e) => (control.scale = parseInt(e.target.value))} />
+          </label>
+          <label>
+            Offset X
+            <input type="range" min={-300} max={300} value={control.offsetX} onChange={(e) => (control.offsetX = parseInt(e.target.value))} />
+          </label>
+          <label>
+            Offset Y
+            <input type="range" min={-300} max={300} value={control.offsetY} onChange={(e) => (control.offsetY = parseInt(e.target.value))} />
+          </label>
+        </div>
         <div ref={refContainer} />
         <button onClick={() => control.play()}>Play</button>
         <button onClick={() => control.pause()}>Pause</button>

@@ -12,6 +12,8 @@ export default function VideoResourceUI({ res }: props) {
   const [outputY, setOutputY] = useState(res.outputY);
   const [outputWidth, setOutputWidth] = useState(res.outputWidth);
   const [outputHeight, setOutputHeight] = useState(res.outputHeight);
+  const [outputRotate, setOutputRotate] = useState(res.outputRotate);
+  const [opacity, setOpacity] = useState(res.opacity);
 
   const [cropImageX, setCropImageX] = useState(res.cropImageX);
   const [cropImageY, setCropImageY] = useState(res.cropImageY);
@@ -24,7 +26,7 @@ export default function VideoResourceUI({ res }: props) {
 
   const [animations, setAnimation] = useState(res.getAnimations());
 
-  const [ease, setEase] = useState(res.ease);
+  const [, setEase] = useState(res.ease);
   const [animationIndex, setAnimationIndex] = useState(res.animationIndex);
   const [timePoint, setTimePoint] = useState(res.timePoint);
   const [timeAnimation, setTimeAnimation] = useState(res.timeAnimation);
@@ -38,6 +40,11 @@ export default function VideoResourceUI({ res }: props) {
   const [saturate, setSaturate] = useState(res.saturate);
   const [sepia, setSepia] = useState(res.sepia);
 
+  const [shadowOffsetX, setShadowOffsetX] = useState(res.shadowOffsetX);
+  const [shadowOffsetY, setShadowOffsetY] = useState(res.shadowOffsetY);
+  const [shadowBlur, setShadowBlur] = useState(res.shadowBlur);
+  const [shadowColor, setShadowColor] = useState(res.shadowColor);
+
   useEffect(() => {
     const $subs: Subscription[] = [];
     //BASIC
@@ -46,6 +53,8 @@ export default function VideoResourceUI({ res }: props) {
     $subs.push(res.on("CHANGE_OUTPUTY", () => setOutputY(res.outputY)));
     $subs.push(res.on("CHANGE_OUTPUT_WIDTH", () => setOutputWidth(res.outputWidth)));
     $subs.push(res.on("CHANGE_OUTPUT_HEIGHT", () => setOutputHeight(res.outputHeight)));
+    $subs.push(res.on("CHANGE_OUTPUT_ROTATE", () => setOutputRotate(res.outputRotate)));
+    $subs.push(res.on("CHANGE_OPACITY", () => setOpacity(res.opacity)));
 
     //CROP
     $subs.push(res.on("CHANGE_CROP_IMAGE_X", () => setCropImageX(res.cropImageX)));
@@ -77,6 +86,12 @@ export default function VideoResourceUI({ res }: props) {
     $subs.push(res.on("CHANGE_FILTER_SATURATE", () => setSaturate(res.saturate)));
     $subs.push(res.on("CHANGE_FILTER_SEPIA", () => setSepia(res.sepia)));
 
+    //SHADOW
+    $subs.push(res.on("CHANGE_SHADOW_X", () => setShadowOffsetX(res.shadowOffsetX)));
+    $subs.push(res.on("CHANGE_SHADOW_Y", () => setShadowOffsetY(res.shadowOffsetY)));
+    $subs.push(res.on("CHANGE_SHADOW_BLUR", () => setShadowBlur(res.shadowBlur)));
+    $subs.push(res.on("CHANGE_SHADOW_COLOR", () => setShadowColor(res.shadowColor)));
+
     return () => $subs.forEach(($sub) => $sub.unsubscribe());
   }, []);
 
@@ -97,7 +112,7 @@ export default function VideoResourceUI({ res }: props) {
         }}
       />
       <h5>ANIMATION({animationIndex})</h5>
-      <select defaultValue={ease} onChange={(e) => (res.ease = e.target.value)}>
+      <select value={res.ease} onChange={(e) => (res.ease = e.target.value)}>
         {res.presets.ease.map((e) => (
           <option value={e} key={e}>
             {e.toUpperCase()}
@@ -140,6 +155,14 @@ export default function VideoResourceUI({ res }: props) {
       <label>
         Height ({outputHeight})
         <input type="range" min={0} max={500} value={res.outputHeight} onChange={(e) => (res.outputHeight = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Rotate ({outputRotate})
+        <input type="range" min={-180} max={180} value={res.outputRotate} onChange={(e) => (res.outputRotate = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Opacity ({opacity})
+        <input type="range" min={0} max={100} value={res.opacity} onChange={(e) => (res.opacity = parseInt(e.target.value))} />
       </label>
       <br />
       <h5>Crop({name})</h5>
@@ -206,6 +229,24 @@ export default function VideoResourceUI({ res }: props) {
       <label>
         Filter sepia ({sepia})
         <input type="range" min={0} max={100} value={res.sepia} onChange={(e) => (res.sepia = parseInt(e.target.value))} />
+      </label>
+      <br />
+      <h5>SHADOW({name})</h5>
+      <label>
+        Shadow X ({shadowOffsetX})
+        <input type="range" min={-30} max={30} value={res.shadowOffsetX} onChange={(e) => (res.shadowOffsetX = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Shadow Y ({shadowOffsetY})
+        <input type="range" min={-30} max={30} value={res.shadowOffsetY} onChange={(e) => (res.shadowOffsetY = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Shadow blur ({shadowBlur})
+        <input type="range" min={0} max={100} value={res.shadowBlur} onChange={(e) => (res.shadowBlur = parseInt(e.target.value))} />
+      </label>
+      <label>
+        Shadow color ({shadowColor})
+        <input type="color" value={res.shadowColor} onChange={(e) => (res.shadowColor = e.target.value)} />
       </label>
     </div>
   );
