@@ -1,7 +1,10 @@
-export default class {
+export default class Clock {
   #currentTime = 0;
   #state: "PLAYING" | "STOP" = "STOP";
-  #timeIntervale = 15;
+  #timeIntervale = 5;
+  startlimit: number | null = null;
+  endlimit: number | null = null;
+  loop: boolean = false;
   constructor() {
     setInterval(() => {
       this.#tick();
@@ -10,6 +13,10 @@ export default class {
   #tick() {
     if (this.#state === "PLAYING") {
       this.#currentTime += this.#timeIntervale;
+      if (this.endlimit && this.endlimit <= this.#currentTime) {
+        this.#currentTime = this.startlimit || 0;
+        if (!this.loop) this.pause();
+      }
     }
   }
   play() {
@@ -21,7 +28,9 @@ export default class {
   getElapsedTime() {
     return this.#currentTime;
   }
-
+  getState() {
+    return this.#state;
+  }
   setSeeking(seek: number) {
     this.#currentTime = seek;
   }

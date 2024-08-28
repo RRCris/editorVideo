@@ -1,8 +1,21 @@
 import gsap from "gsap";
 import EventListener from "./EventListener";
+import Control from "./Control";
+import TimeLine from "./TimeLine";
+import { presetsAnimations, TypeAnimationOptional } from "../data/presetsVideo";
+import WebWorker from "./WebWorker";
 
-interface TypePresets {
-  ease: gsap.EaseString[];
+export interface TypeObjectVideo {
+  id: string;
+  name: string;
+  container: HTMLVideoElement;
+  frames: TypeAnimationFrame[];
+  offsetTime: number;
+  hiddenTimeStart: number;
+  hiddenTimeEnd: number;
+  animationIndex: number;
+  animationIn: string;
+  animationOut: string;
 }
 interface TypeAnimationFrame {
   id: string;
@@ -38,14 +51,15 @@ interface TypeAnimationFrame {
   shadowBlur: number;
   shadowColor: string;
 }
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const states = ["UNLOAD", "STOP", "LOADERROR", "PLAYING", "RECORDING"] as const;
+
+const states = ["UNLOAD", "STOP", "LOADERROR", "PLAYING", "RECORDING", "PREVIEW"] as const;
 type TypeState = (typeof states)[number];
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const events = [
   "LOADED",
   "LOAD_ERROR",
+  "CHANGE_STATE",
+  "CHANGE_DURATION",
   "CHANGE_NAME",
   "CHANGE_OUTPUTX",
   "CHANGE_OUTPUTY",
@@ -77,19 +91,24 @@ const events = [
   "CHANGE_SHADOW_Y",
   "CHANGE_SHADOW_BLUR",
   "CHANGE_SHADOW_COLOR",
+  "CHANGE_DURATION_IN",
+  "CHANGE_ANIMATION_IN",
+  "CHANGE_DURATION_OUT",
+  "CHANGE_ANIMATION_OUT",
 ] as const;
 type TypeEvent = (typeof events)[number];
 
-export default class {
+export default class VideoResource {
   containerVideo = document.createElement("video");
+  control: null | Control = null;
+  timeLine: TimeLine = new TimeLine(new Control());
+
   subject = new EventListener();
   type = "VIDEO";
   id = crypto.randomUUID();
-  state: TypeState = "UNLOAD";
+  #state: TypeState = "UNLOAD";
+  #raw: File | null = null;
 
-  presets: TypePresets = {
-    ease: ["none", "back", "bounce", "elastic", "circ", "expo", "power1", "power2", "power3", "power4", "sine"],
-  };
   resourceType: string | undefined;
   resourceWidth: number | undefined;
   resourceHeight: number | undefined;
@@ -100,6 +119,14 @@ export default class {
   #offsetTime: number = 0;
   #hiddenTimeStart: number = 0;
   #hiddenTimeEnd: number = 0;
+
+  #animationIn: string = "NONE";
+  #animationInDuration: number = 1000;
+  #animationInObject: null | TypeAnimationOptional = null;
+
+  #animationOut: string = "NONE";
+  #animationOutDuration: number = 1000;
+  #animationOutObject: null | TypeAnimationOptional = null;
 
   #animationIndex = 0;
   #animations: TypeAnimationFrame[] = [
@@ -113,8 +140,8 @@ export default class {
       cropImageH: 0,
       cropImageW: 0,
       //basic
-      outputWidth: 240,
-      outputHeight: 140,
+      outputWidth: 720,
+      outputHeight: 420,
       outputX: 0,
       outputY: 0,
       outputRotate: 0,
@@ -136,13 +163,26 @@ export default class {
       shadowOffsetX: 0,
       shadowOffsetY: 0,
       shadowBlur: 0,
-      shadowColor: "hsla(61, 33%, 65%, 1)",
+      shadowColor: "#000000",
     },
   ];
   /**
    * ______________________________________________Setters
    */
-
+  //state
+  set state(newState: TypeState) {
+    if (states.includes(newState)) {
+      this.#state = newState;
+      this.fire("CHANGE_STATE");
+    }
+  }
+  get state() {
+    return this.#state;
+  }
+  //duration
+  get duration() {
+    return this.#hiddenTimeEnd - this.#hiddenTimeStart;
+  }
   //name
   set name(newValue: string) {
     if (newValue !== this.#name) {
@@ -156,6 +196,10 @@ export default class {
   //outputX
   set outputX(newValue: number) {
     if (this.state !== "RECORDING") {
+      if (this.state === "PREVIEW") {
+        const near = this.control?.getAxisNear(newValue, this.outputY, this.outputWidth, this.outputHeight, this.id);
+        if (near && near.x) newValue = near.x;
+      }
       const curr = this.#animations[this.#animationIndex].outputX;
 
       if (newValue !== curr) {
@@ -171,6 +215,10 @@ export default class {
   //outputY
   set outputY(newValue: number) {
     if (this.state !== "RECORDING") {
+      if (this.state === "PREVIEW") {
+        const near = this.control?.getAxisNear(this.outputX, newValue, this.outputWidth, this.outputHeight, this.id);
+        if (near && near.y) newValue = near.y;
+      }
       const curr = this.#animations[this.#animationIndex].outputY;
 
       if (newValue !== curr) {
@@ -304,7 +352,9 @@ export default class {
   //offsetTime
   set offsetTime(newValue: number) {
     if (this.state !== "RECORDING") {
-      if (newValue !== this.#offsetTime && newValue >= 0) {
+      const start = newValue;
+      const end = start + this.duration;
+      if (this.timeLine && !this.timeLine.checkColisions(start, end, this.id) && newValue !== this.#offsetTime) {
         this.#offsetTime = newValue;
         this.fire("CHANGE_OFFSET_TIME");
       }
@@ -317,9 +367,12 @@ export default class {
   //hiddenTimeStart
   set hiddenTimeStart(newValue: number) {
     if (this.state !== "RECORDING") {
-      if (newValue !== this.#hiddenTimeStart && newValue >= 0 && newValue <= this.hiddenTimeEnd) {
+      const start = this.offsetTime;
+      const end = start + (this.hiddenTimeEnd - newValue);
+      if (this.timeLine && !this.timeLine.checkColisions(start, end, this.id) && newValue !== this.#hiddenTimeStart && newValue <= this.hiddenTimeEnd) {
         this.#hiddenTimeStart = newValue;
         this.fire("CHANGE_HIDDEN_TIME_START");
+        this.fire("CHANGE_DURATION");
       }
     }
   }
@@ -330,9 +383,12 @@ export default class {
   //hiddenTimeEnd
   set hiddenTimeEnd(newValue: number) {
     if (this.state !== "RECORDING") {
-      if (newValue !== this.#hiddenTimeEnd && newValue >= this.hiddenTimeStart && newValue <= (this.resourceDuration || 0)) {
+      const start = this.offsetTime;
+      const end = start + (newValue - this.hiddenTimeStart);
+      if (newValue !== this.#hiddenTimeEnd && newValue >= this.hiddenTimeStart && newValue <= (this.resourceDuration || 0) && !this.timeLine.checkColisions(start, end, this.id)) {
         this.#hiddenTimeEnd = newValue;
         this.fire("CHANGE_HIDDEN_TIME_END");
+        this.fire("CHANGE_DURATION");
       }
     }
   }
@@ -595,7 +651,51 @@ export default class {
   get shadowColor() {
     return this.#animations[this.#animationIndex].shadowColor;
   }
+  //animationIn
+  set animationIn(newValue: string) {
+    if (this.#animationIn !== newValue && Object.keys(presetsAnimations).includes(newValue)) {
+      this.#animationIn = newValue;
+      this.#animationInObject = presetsAnimations[newValue];
+      this.fire("CHANGE_ANIMATION_IN");
+    }
+  }
+  get animationIn() {
+    return this.#animationIn;
+  }
 
+  //animationInDuration
+  set animationInDuration(newValue: number) {
+    if (this.#animationInDuration !== newValue && newValue >= 0) {
+      this.#animationInDuration = newValue;
+      this.fire("CHANGE_DURATION_IN");
+    }
+  }
+  get animationInDuration() {
+    return this.#animationInDuration;
+  }
+
+  //animationOut
+  set animationOut(newValue: string) {
+    if (this.#animationOut !== newValue && Object.keys(presetsAnimations).includes(newValue)) {
+      this.#animationOut = newValue;
+      this.#animationOutObject = presetsAnimations[newValue];
+      this.fire("CHANGE_ANIMATION_OUT");
+    }
+  }
+  get animationOut() {
+    return this.#animationOut;
+  }
+
+  //animationOutDuration
+  set animationOutDuration(newValue: number) {
+    if (this.#animationOutDuration !== newValue && newValue >= 0) {
+      this.#animationOutDuration = newValue;
+      this.fire("CHANGE_DURATION_OUT");
+    }
+  }
+  get animationOutDuration() {
+    return this.#animationOutDuration;
+  }
   /**
    * ______________________________________________Metodos para eventos,listeners,observables
    */
@@ -620,20 +720,52 @@ export default class {
   /**
    * ______________________________________________Funciones
    */
-  emit(context: CanvasRenderingContext2D, seek: number, isPlaying: boolean) {
-    //verificamos si esta a tiempo para reproduccir
+  addControl(control: Control) {
+    this.control = control;
+    this.control.on("CHANGE_SELECT", () => {
+      this.previewSet(control.selectResource === this.id);
+    });
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  draw(context: CanvasRenderingContext2D, animated: TypeAnimationFrame | any) {
+    //draw
+    context.save();
+
+    context.translate(animated.outputX, animated.outputY);
+    context.rotate((animated.outputRotate * Math.PI) / 180);
+
+    context.filter = `
+      blur(${animated.blur}px) 
+      brightness(${animated.brightness}%) 
+      grayscale(${animated.grayscale}%) 
+      hue-rotate(${animated.hueRotation}deg) 
+      contrast(${animated.contrast}%) 
+      invert(${animated.invert}%) 
+      saturate(${animated.saturate}%) 
+      sepia(${animated.sepia}%) 
+      opacity(${animated.opacity}%)
+      drop-shadow(${animated.shadowOffsetX}px ${animated.shadowOffsetY}px ${animated.shadowBlur}px ${animated.shadowColor})
+      `;
+    context.drawImage(this.containerVideo, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
+    context.restore();
+  }
+  emit(context: CanvasRenderingContext2D | WebWorker, seek: number, isPlaying: boolean) {
+    //verificamos si esta a tiempo para reproduccir o estamos en preview
     const timeleft = seek - this.offsetTime;
     const durationLeft = this.#hiddenTimeEnd - this.#hiddenTimeStart;
+
+    ///________________MAIN
     if (timeleft >= 0 && timeleft < durationLeft) {
-      const idealTime = timeleft + this.hiddenTimeStart;
       //Update Time
-      const offset = 100;
+      const idealTime = seek - this.offsetTime + this.hiddenTimeStart;
+      const offset = 50;
       const curr = this.containerVideo.currentTime * 1000;
       if (curr > idealTime + offset || curr < idealTime - offset) {
         /**
          * No se puede estar seteando currentTime constantemente por lo que  solo lo seteo
          * cuando la diferencia entre el tiempo que deberia tener y el que tiene supera los 100 milisegundos
          */
+        console.count("correction");
         this.containerVideo.currentTime = idealTime / 1000; // esta en milisegundos y currentTime recibe segundos
       }
       //Playing Video
@@ -658,11 +790,88 @@ export default class {
         }
       });
       tl.seek((seek - this.offsetTime) / 1000);
+
+      if (context instanceof WebWorker) {
+        const frame = new VideoFrame(this.containerVideo, {
+          timestamp: 0,
+        });
+        context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
+      } else {
+        this.draw(context, animated);
+      }
+
+      tl.kill();
+    }
+    //______________ANIMATION IN
+    else if (this.#animationInObject && timeleft < 0 && timeleft + this.animationInDuration >= 0) {
+      const duration = this.animationInDuration / 1000;
+      const seek = duration + timeleft / 1000;
+      const procesed = this.processAnimations();
+      const tl = gsap.timeline({ paused: true });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const animated: any = { ...procesed[0].properties, ...this.#animationInObject };
+      tl.to(animated, { ...procesed[0].properties, duration, ease: this.#animationInObject.ease });
+      tl.seek(seek);
+
+      //draw
+      if (context instanceof WebWorker) {
+        const frame = new VideoFrame(this.containerVideo, {
+          timestamp: 0,
+        });
+        context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
+      } else {
+        this.draw(context, animated);
+      }
+      tl.kill();
+    }
+    ///______________ANIMATION OUT
+    else if (this.#animationOutObject && timeleft >= durationLeft && timeleft - this.animationOutDuration < durationLeft) {
+      const seek = (timeleft - durationLeft) / 1000;
+      const duration = this.animationOutDuration / 1000;
+      const procesed = this.processAnimations().reverse();
+      const tl = gsap.timeline({ paused: true });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const animated: any = procesed[0].properties;
+      tl.to(animated, { ...this.#animationOutObject, duration, ease: this.#animationOutObject.ease });
+      tl.seek(seek);
+      //draw
+      if (context instanceof WebWorker) {
+        const frame = new VideoFrame(this.containerVideo, {
+          timestamp: 0,
+        });
+        context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
+      } else {
+        this.draw(context, animated);
+      }
+    }
+
+    //____________AXIS_HELPER
+    if (this.state === "PREVIEW" && !(context instanceof WebWorker)) {
+      const near = this.control?.getAxisNear(this.outputX, this.outputY, this.outputWidth, this.outputHeight, this.id);
+      if (near) {
+        context.save();
+        context.lineWidth = 5;
+        context.strokeStyle = "#73FFF3";
+        if (near.x !== null) {
+          context.beginPath();
+          context.moveTo(near.x + near.offX, 0);
+          context.lineTo(near.x + near.offX, this.control?.height || 0);
+          context.stroke();
+        }
+        if (near.y !== null) {
+          context.beginPath();
+          context.moveTo(0, near.y + near.offY);
+          context.lineTo(this.control?.width || 0, near.y + near.offY);
+          context.stroke();
+        }
+        context.restore();
+      }
+
       context.save();
-
+      const animated = this.#animations[this.animationIndex];
       context.translate(animated.outputX, animated.outputY);
-
       context.rotate((animated.outputRotate * Math.PI) / 180);
+
       context.filter = `
       blur(${animated.blur}px) 
       brightness(${animated.brightness}%) 
@@ -672,14 +881,15 @@ export default class {
       invert(${animated.invert}%) 
       saturate(${animated.saturate}%) 
       sepia(${animated.sepia}%) 
-      opacity(${animated.opacity}%)
+      opacity(${20}%)
       drop-shadow(${animated.shadowOffsetX}px ${animated.shadowOffsetY}px ${animated.shadowBlur}px ${animated.shadowColor})
       `;
       context.drawImage(this.containerVideo, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
       context.restore();
+    }
 
-      tl.kill();
-    } else {
+    //_______PAUSA
+    if (this.state !== "PREVIEW" && !(timeleft >= 0 && timeleft < durationLeft)) {
       this.containerVideo.pause();
       this.containerVideo.currentTime = 0;
     }
@@ -716,17 +926,21 @@ export default class {
 
     this.containerVideo.src = url;
   }
-  startRecording() {
-    this.state = "RECORDING";
+  recording(start: boolean) {
+    this.state = start ? "RECORDING" : "STOP";
   }
-  endRecording() {
-    this.state = "STOP";
+  previewSet(preview: boolean) {
+    this.state = preview ? "PREVIEW" : "STOP";
   }
+  removeSelf() {
+    this.timeLine.removeResource(this.id);
+  }
+
   /**
    * Animations
    */
   getAnimations() {
-    return [...this.#animations];
+    return [...this.#animations.sort((a, b) => a.timePoint - b.timePoint)];
   }
   processAnimations() {
     const maxTime = this.#hiddenTimeEnd - this.#hiddenTimeStart;
@@ -793,6 +1007,7 @@ export default class {
     if (listNearest[0]) {
       const newAnimation: TypeAnimationFrame = { ...listNearest[0], timePoint: percentage, timeAnimation: 0, id: crypto.randomUUID() };
       this.#animations.push(newAnimation);
+      this.animationIndex = this.#animations.length - 1;
     }
     this.fire("CHANGE_ANIMATIONS_LIST");
   }
@@ -806,8 +1021,31 @@ export default class {
     }
   }
 
+  /**
+   *  Workers
+   */
+
+  toObject(): TypeObjectVideo | undefined {
+    if (this.#raw) {
+      return {
+        id: this.id,
+        name: this.name,
+        container: this.containerVideo,
+        frames: this.getAnimations(),
+        offsetTime: this.offsetTime,
+        hiddenTimeStart: this.hiddenTimeStart,
+        hiddenTimeEnd: this.hiddenTimeEnd,
+        animationIndex: this.animationIndex,
+        animationIn: this.animationIn,
+        animationOut: this.animationOut,
+      };
+    }
+  }
+
   constructor(raw: File | string) {
+    this.containerVideo.muted = true;
     if (raw instanceof File) {
+      this.#raw = raw;
       this.name = raw.name.split(".")[0];
       this.resourceType = raw.type;
 
@@ -825,5 +1063,24 @@ export default class {
       this.resourceType = "video/" + raw.split(".").reverse()[0];
       this.load(raw);
     }
+  }
+
+  static fromObject(object: TypeObjectVideo) {
+    const instanced = new VideoResource(object.file);
+    instanced.on("LOADED", () => {
+      instanced.name = object.name;
+      instanced.#animations = object.frames;
+
+      instanced.hiddenTimeStart = object.hiddenTimeStart;
+      instanced.hiddenTimeEnd = object.hiddenTimeEnd;
+      instanced.offsetTime = object.offsetTime;
+
+      instanced.animationIndex = object.animationIndex;
+      instanced.animationIn = object.animationIn;
+      instanced.animationOut = object.animationOut;
+    });
+
+    return instanced;
+    //tiempo despues de devolver la instancia se actualizan los valores
   }
 }
