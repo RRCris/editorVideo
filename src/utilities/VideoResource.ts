@@ -760,7 +760,7 @@ export default class VideoResource {
       const idealTime = seek - this.offsetTime + this.hiddenTimeStart;
       const offset = 50;
       const curr = this.containerVideo.currentTime * 1000;
-      if (curr > idealTime + offset || curr < idealTime - offset) {
+      if (curr > idealTime + offset || curr < idealTime - offset || (!isPlaying && curr !== idealTime)) {
         /**
          * No se puede estar seteando currentTime constantemente por lo que  solo lo seteo
          * cuando la diferencia entre el tiempo que deberia tener y el que tiene supera los 100 milisegundos

@@ -1,11 +1,9 @@
 console.log("worker loaded");
 import { ArrayBufferTarget as MP4_ArrayBufferTarget, Muxer as MP4Muxer } from "mp4-muxer";
 import { ArrayBufferTarget as WEBM_ArrayBufferTarget, Muxer as WEBMMuxer } from "webm-muxer";
+import { eventsReturned } from "./WebWorker";
 
-import audioRaw from "../assets/gospel-choir.mp3";
-
-const eventsReturned = ["OUTPUT"];
-type TypeEvents = (typeof eventsReturned)[number];
+type TypeEventsReturned = (typeof eventsReturned)[number];
 
 let canvas: null | OffscreenCanvas = null;
 let context: null | OffscreenCanvasRenderingContext2D = null;
@@ -13,20 +11,32 @@ let context: null | OffscreenCanvasRenderingContext2D = null;
 let width: null | number = null;
 let height: null | number = null;
 let format: null | "MP4" | "WEBM" = null;
+let fps: number = 30;
+let currentTime: number = 0;
+let lastKeyframe = 0;
 
 let muxerRecord: MP4Muxer<MP4_ArrayBufferTarget> | WEBMMuxer<WEBM_ArrayBufferTarget> | null = null;
 let videoEncoder: VideoEncoder | null = null;
-let trackAudio: MediaStreamTrack | null = null;
 let audioEncoder: AudioEncoder | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fire(event: TypeEventsReturned, info?: any, trasfers?: Transferable[]) {
+  if (eventsReturned.includes(event)) {
+    if (trasfers) self.postMessage({ event, info }, { transfer: trasfers });
+    else self.postMessage({ event, info });
+  }
+}
 
 interface infoInit {
   width: number;
   height: number;
   format: "MP4" | "WEBM";
+  fps: number;
 }
 
 interface infoPreparate {
   background: string;
+  currentTime: number;
 }
 
 const events = {
@@ -34,6 +44,7 @@ const events = {
     width = info.width;
     height = info.height;
     format = info.format;
+    fps = info.fps;
     canvas = new OffscreenCanvas(info.width, info.height);
     context = canvas.getContext("2d", {
       willReadFrequently: true,
@@ -94,53 +105,31 @@ const events = {
     );
 
     //AUDIO
-    const oof = new OfflineAudioContext({ length: 0, sampleRate: 0, numberOfChannels: 0 });
-    const contextAudio = new AudioContext();
-    const temporalBuffer = contextAudio.createBufferSource();
-    fetch(audioRaw)
-      .then((res) => res.arrayBuffer())
-      .then((bufferRaw) => new AudioContext().decodeAudioData(bufferRaw))
-      .then((bufferAudio) => {
-        const audioNode = contextAudio.createMediaStreamDestination();
-        temporalBuffer.buffer = bufferAudio;
-        temporalBuffer.connect(audioNode);
-        trackAudio = audioNode.stream.getAudioTracks()[0];
 
-        audioEncoder = new AudioEncoder({
-          output: (chunck, meta) => muxerRecord?.addAudioChunk(chunck, meta),
-          error: (e) => console.log(e),
-        });
+    audioEncoder = new AudioEncoder({
+      output: (chunck, meta) => muxerRecord?.addAudioChunk(chunck, meta),
+      error: (e) => console.log(e),
+    });
 
-        audioEncoder.configure(
-          format === "MP4"
-            ? {
-                codec: "mp4a.40.2",
-                sampleRate: 48000,
-                numberOfChannels: 2,
-                bitrate: 128_000,
-              }
-            : {
-                codec: "opus",
-                numberOfChannels: 2,
-                sampleRate: 48000,
-                bitrate: 64000,
-              }
-        );
-
-        const trackProcessor = new MediaStreamTrackProcessor({ track: trackAudio });
-        const consumer = new WritableStream({
-          write(audioData) {
-            if (audioEncoder) {
-              audioEncoder.encode(audioData);
-              audioData.close();
-            }
-          },
-        });
-        trackProcessor.readable.pipeTo(consumer);
-        temporalBuffer.start();
-      });
+    audioEncoder.configure(
+      format === "MP4"
+        ? {
+            codec: "mp4a.40.2",
+            sampleRate: 48000,
+            numberOfChannels: 2,
+            bitrate: 128_000,
+          }
+        : {
+            codec: "opus",
+            numberOfChannels: 2,
+            sampleRate: 48000,
+            bitrate: 64000,
+          }
+    );
   },
   PREPARATE: (info: infoPreparate) => {
+    currentTime = info.currentTime;
+
     if (context && width && height) {
       context.clearRect(0, 0, width, height);
 
@@ -173,22 +162,53 @@ const events = {
       `;
       context.drawImage(frame, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
       context.restore();
+      frame.close();
     }
   },
   PRINT_FRAME: () => {
-    if (canvas) {
-      const outputFrame = new self.VideoFrame(canvas, {
-        timestamp: 0,
+    if (canvas && videoEncoder) {
+      const currentFrame = Math.floor((currentTime / 1000) * fps);
+      const key = currentTime > lastKeyframe + 2000;
+      if (key) lastKeyframe = currentTime;
+      console.log(currentTime, key);
+
+      const frame = new VideoFrame(canvas, {
+        timestamp: (currentFrame * 1e6) / fps,
       });
-      postMessage({ event: "OUTPUT", info: outputFrame }, [outputFrame]);
+      videoEncoder.encode(frame, { keyFrame: key });
+
+      frame.close();
+      fire("NEXT_FRAME");
     }
   },
-  EXPORT: () => {
-    console.log("EXPORT");
+  AUDIO_ENCODE: (audioData: AudioData) => {
+    if (audioEncoder) {
+      audioEncoder.encode(audioData);
+      audioData.close();
+    }
+  },
+  EXPORT: async () => {
+    if (videoEncoder && audioEncoder && muxerRecord) {
+      lastKeyframe = 0;
+      currentTime = 0;
+      await videoEncoder.flush();
+      await audioEncoder.flush();
+      muxerRecord.finalize();
+      const buffer = muxerRecord.target.buffer;
+      fire("OUTPUT", buffer, [buffer]);
+      audioEncoder.close();
+      audioEncoder = null;
+      videoEncoder.close();
+      videoEncoder = null;
+      muxerRecord = null;
+      canvas = null;
+
+      context = null;
+    }
   },
 };
 
-interface propReceiveData {
+export interface propReceiveData {
   event: keyof typeof events;
   info: unknown;
 }

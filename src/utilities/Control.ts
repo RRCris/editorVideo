@@ -68,6 +68,9 @@ export default class Control {
   #trackAudio: MediaStreamTrack | null = null;
   #lastkey = 0;
 
+  #totalFrames: number = 0;
+  #currentFrame: number = 0;
+
   //file
   set format(newValue: "MP4" | "WEBM") {
     if (files.includes(newValue)) {
@@ -163,6 +166,7 @@ export default class Control {
   constructor() {
     if (window.AudioEncoder !== undefined) console.log("soport Audio Encoder");
     if (window.VideoEncoder !== undefined) console.log("soport Video Encoder");
+    if (window.VideoFrame !== undefined) console.log("soport Video Frame");
     if (window.MediaStreamTrackProcessor !== undefined) console.log("soport MediaStreamTrackProcessor");
     if (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1,mp4a.40.2")) console.log("soport export MP4");
     if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,Opus")) console.log("soport export WEBM");
@@ -217,7 +221,7 @@ export default class Control {
   }
   draw(context: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | WebWorker, currentTime: number, play: boolean) {
     if (context instanceof WebWorker) {
-      context.fire("PREPARATE", { background: this.background });
+      context.fire("PREPARATE", { background: this.background, currentTime });
       this.#timeLines.toReversed().forEach((timeline) => {
         timeline.emit(context, currentTime, play);
       });
@@ -248,10 +252,6 @@ export default class Control {
     //conteo de  tiempo
     console.time("record");
     console.log("start");
-    const data: TypeTimeLineObject[] = [];
-    for (const tl of this.#timeLines) {
-      data.push(tl.toObject());
-    }
 
     //Prepate scene
     this.state = "RECORDING";
@@ -259,66 +259,66 @@ export default class Control {
     this.pause();
 
     // Prepare resourceRecord
-    // this.#canvasRecord = new OffscreenCanvas(this.width, this.height);
-    // this.#contextRecord = this.#canvasRecord.getContext("2d", {
-    //   willReadFrequently: true,
-    //   desynchronized: true,
-    // });
+    this.#canvasRecord = new OffscreenCanvas(this.width, this.height);
+    this.#contextRecord = this.#canvasRecord.getContext("2d", {
+      willReadFrequently: true,
+      desynchronized: true,
+    });
 
-    // //Create muxer
-    // this.#muxerRecord =
-    //   this.format === "MP4"
-    //     ? new MP4Muxer({
-    //         target: new MP4_ArrayBufferTarget(),
-    //         video: {
-    //           codec: "avc",
-    //           width: this.#canvasRecord.width,
-    //           height: this.#canvasRecord.height,
-    //         },
-    //         audio: {
-    //           codec: "aac",
-    //           numberOfChannels: 2,
-    //           sampleRate: 48000,
-    //         },
-    //         fastStart: false,
-    //         firstTimestampBehavior: "offset",
-    //       })
-    //     : new WEBMMuxer({
-    //         target: new WEBM_ArrayBufferTarget(),
-    //         video: {
-    //           codec: "V_VP9",
-    //           width: this.width,
-    //           height: this.height,
-    //         },
-    //         audio: {
-    //           codec: "A_OPUS",
-    //           numberOfChannels: 2,
-    //           sampleRate: 48000,
-    //         },
-    //         firstTimestampBehavior: "offset",
-    //       });
+    //Create muxer
+    this.#muxerRecord =
+      this.format === "MP4"
+        ? new MP4Muxer({
+            target: new MP4_ArrayBufferTarget(),
+            video: {
+              codec: "avc",
+              width: this.#canvasRecord.width,
+              height: this.#canvasRecord.height,
+            },
+            audio: {
+              codec: "aac",
+              numberOfChannels: 2,
+              sampleRate: 48000,
+            },
+            fastStart: false,
+            firstTimestampBehavior: "offset",
+          })
+        : new WEBMMuxer({
+            target: new WEBM_ArrayBufferTarget(),
+            video: {
+              codec: "V_VP9",
+              width: this.width,
+              height: this.height,
+            },
+            audio: {
+              codec: "A_OPUS",
+              numberOfChannels: 2,
+              sampleRate: 48000,
+            },
+            firstTimestampBehavior: "offset",
+          });
 
-    // this.#videoEncoder = new VideoEncoder({
-    //   output: (chunck, meta) => this.#muxerRecord?.addVideoChunk(chunck, meta),
-    //   error: (e) => console.log(e),
-    // });
+    this.#videoEncoder = new VideoEncoder({
+      output: (chunck, meta) => this.#muxerRecord?.addVideoChunk(chunck, meta),
+      error: (e) => console.log(e),
+    });
 
-    // this.#videoEncoder.configure(
-    //   this.format === "MP4"
-    //     ? {
-    //         codec: "avc1.42001f",
-    //         width: this.width,
-    //         height: this.height,
-    //         bitrate: 500_000,
-    //         bitrateMode: "constant",
-    //       }
-    //     : {
-    //         codec: "vp09.00.10.08",
-    //         width: this.width,
-    //         height: this.height,
-    //         bitrate: 1e6,
-    //       }
-    // );
+    this.#videoEncoder.configure(
+      this.format === "MP4"
+        ? {
+            codec: "avc1.42001f",
+            width: this.width,
+            height: this.height,
+            bitrate: 500_000,
+            bitrateMode: "constant",
+          }
+        : {
+            codec: "vp09.00.10.08",
+            width: this.width,
+            height: this.height,
+            bitrate: 1e6,
+          }
+    );
 
     // //AUDIO
     const context = new AudioContext();
@@ -327,77 +327,52 @@ export default class Control {
       .then((res) => res.arrayBuffer())
       .then((bufferRaw) => new AudioContext().decodeAudioData(bufferRaw))
       .then((bufferAudio) => {
-        console.log(bufferAudio);
         const audioNode = context.createMediaStreamDestination();
         temporalBuffer.buffer = bufferAudio;
         temporalBuffer.connect(audioNode);
         this.#trackAudio = audioNode.stream.getAudioTracks()[0];
 
-        //Worker
-        this.#worker = new WebWorker();
-        this.#worker.fire("INIT", { width: this.width, height: this.height, format: this.format });
-        const $sub = this.#worker.on("OUTPUT", () => {
-          const output = this.#worker?.output;
-          if (output) {
-            console.log(output);
-            const canvas = document.createElement("canvas");
-            canvas.height = output.codedHeight;
-            canvas.width = output.codedWidth;
-            const ctx = canvas.getContext("2d");
-            ctx?.drawImage(output, 0, 0, canvas.width, canvas.height);
-            const img = new Image();
-            img.src = canvas.toDataURL();
-            document.body.appendChild(img);
-          }
-          $sub.unsubscribe();
+        this.#audioEncoder = new AudioEncoder({
+          output: (chunck, meta) => this.#muxerRecord?.addAudioChunk(chunck, meta),
+          error: (e) => console.log(e),
         });
 
-        this.draw(this.#worker, 0, false);
-        this.#worker.fire("PRINT_FRAME");
+        this.#audioEncoder.configure(
+          this.format === "MP4"
+            ? {
+                codec: "mp4a.40.2",
+                sampleRate: 48000,
+                numberOfChannels: 2,
+                bitrate: 128_000,
+              }
+            : {
+                codec: "opus",
+                numberOfChannels: 2,
+                sampleRate: 48000,
+                bitrate: 64000,
+              }
+        );
+        const audioEncoder = this.#audioEncoder;
+        const state = this.state;
 
-        //     this.#audioEncoder = new AudioEncoder({
-        //       output: (chunck, meta) => this.#muxerRecord?.addAudioChunk(chunck, meta),
-        //       error: (e) => console.log(e),
-        //     });
-
-        //     this.#audioEncoder.configure(
-        //       this.format === "MP4"
-        //         ? {
-        //             codec: "mp4a.40.2",
-        //             sampleRate: 48000,
-        //             numberOfChannels: 2,
-        //             bitrate: 128_000,
-        //           }
-        //         : {
-        //             codec: "opus",
-        //             numberOfChannels: 2,
-        //             sampleRate: 48000,
-        //             bitrate: 64000,
-        //           }
-        //     );
-        //     const audioEncoder = this.#audioEncoder;
-        //     const state = this.state;
-
-        //     const trackProcessor = new MediaStreamTrackProcessor({ track: this.#trackAudio });
-        //     const consumer = new WritableStream({
-        //       write(audioData) {
-        //         if (state !== "RECORDING") return;
-        //         audioEncoder.encode(audioData);
-        //         audioData.close();
-        //       },
-        //     });
-        //     trackProcessor.readable.pipeTo(consumer);
-
+        const trackProcessor = new MediaStreamTrackProcessor({ track: this.#trackAudio });
+        const consumer = new WritableStream({
+          write(audioData) {
+            if (state !== "RECORDING") return;
+            audioEncoder.encode(audioData);
+          },
+        });
+        trackProcessor.readable.pipeTo(consumer);
         //     //start record
-        //     if (this.#contextRecord) {
-        //       this.draw(this.#contextRecord, 0, false);
+        if (this.#contextRecord) {
+          this.draw(this.#contextRecord, 0, false);
 
-        //       setTimeout(() => {
-        //         temporalBuffer.start();
-        //         this.loopRecord();
-        //         this.clock.play();
-        //       }, 30);
-        //     }
+          setTimeout(() => {
+            this.loopRecord();
+            temporalBuffer.start();
+            this.clock.play();
+          }, 30);
+        }
       });
   }
   async loopRecord() {
@@ -449,6 +424,98 @@ export default class Control {
         console.timeEnd("record");
       } else {
         setTimeout(() => this.loopRecord(), 1000 / this.fps);
+      }
+    }
+  }
+  setupWorker() {
+    //conteo de  tiempo
+    console.time("record");
+    console.log("start");
+
+    //Prepate scene
+    this.state = "RECORDING";
+    this.#timeLines.forEach((tl) => tl.recording(true));
+    this.pause();
+
+    this.#totalFrames = (this.duration / 1000) * this.fps;
+    this.#currentFrame = 0;
+    //AUDIO
+    const context = new AudioContext();
+    const temporalBuffer = context.createBufferSource();
+    fetch(audioRaw)
+      .then((res) => res.arrayBuffer())
+      .then((bufferRaw) => new AudioContext().decodeAudioData(bufferRaw))
+      .then((bufferAudio) => {
+        //Extraer Stram de AudioContext
+        const audioNode = context.createMediaStreamDestination();
+        temporalBuffer.buffer = bufferAudio;
+        temporalBuffer.connect(audioNode);
+        this.#trackAudio = audioNode.stream.getAudioTracks()[0];
+
+        //Worker
+        this.#worker = new WebWorker();
+        this.#worker.fire("INIT", { width: this.width, height: this.height, format: this.format, fps: this.fps });
+
+        //Procesar Audio
+        const worker = this.#worker;
+        const trackProcessor = new MediaStreamTrackProcessor({ track: this.#trackAudio });
+        const consumer = new WritableStream({
+          write(audioData) {
+            worker.fire("AUDIO_ENCODE", audioData, [audioData]);
+          },
+        });
+        trackProcessor.readable.pipeTo(consumer);
+
+        //start record
+        setTimeout(() => {
+          this.drawWorker();
+          temporalBuffer.start();
+          this.clock.play();
+        }, 30);
+        // }
+      });
+  }
+  drawWorker() {
+    if (this.#worker) {
+      // const currentTime = this.clock.getElapsedTime();
+      // if (currentTime >= (this.timeEnd || this.duration)) {
+      if (this.#currentFrame >= this.#totalFrames) {
+        const $sub = this.#worker.on("OUTPUT", () => {
+          const output = this.#worker?.output;
+          if (typeof output !== "number" && output) {
+            //Restart Services
+            this.state = "STOP";
+            this.#lastkey = 0;
+            this.clock.pause();
+            this.#timeLines.forEach((tl) => tl.recording(false));
+
+            //Download
+            const blob = new Blob([output]);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.style.display = "none";
+            a.href = url;
+            a.download = "animation." + (this.format === "MP4" ? "mp4" : "webm");
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+
+            //time end
+            console.timeEnd("record");
+          }
+          $sub.unsubscribe();
+        });
+        this.#trackAudio?.stop();
+        this.#worker.fire("EXPORT");
+      } else {
+        const $sub = this.#worker.on("NEXT_FRAME", () => {
+          $sub.unsubscribe();
+          requestAnimationFrame(() => this.drawWorker());
+        });
+        const currentTime = (this.#currentFrame / this.#totalFrames) * this.duration;
+        this.draw(this.#worker, currentTime, true);
+        this.#worker.fire("PRINT_FRAME");
+        this.#currentFrame++;
       }
     }
   }

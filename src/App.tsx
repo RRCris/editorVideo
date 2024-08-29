@@ -77,7 +77,8 @@ function App() {
         <div>
           <button onClick={() => control.play()}>Play</button>
           <button onClick={() => control.pause()}>Pause</button>
-          <button onClick={handleRecording}>Records</button>
+          <button onClick={handleRecording}>Records MAIN</button>
+          <button onClick={() => control.setupWorker()}>Records WORKER</button>
           <button onClick={() => control.addTimeLine()}>Add Time Line</button>
           <input type="range" ref={refBar} min={0} max={control.duration} onChange={(e) => control.setSeek(parseInt(e.target.value))} />
         </div>
