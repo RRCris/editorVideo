@@ -90,11 +90,10 @@ const events = {
     videoEncoder.configure(
       format === "MP4"
         ? {
-            codec: "avc1.42001f",
+            codec: "avc1.42E01E",
             width: width,
             height: height,
-            bitrate: 500_000,
-            bitrateMode: "constant",
+            bitrate: 1_000_000,
           }
         : {
             codec: "vp09.00.10.08",
@@ -115,14 +114,14 @@ const events = {
       format === "MP4"
         ? {
             codec: "mp4a.40.2",
-            sampleRate: 48000,
+            sampleRate: 44100,
             numberOfChannels: 2,
             bitrate: 128_000,
           }
         : {
             codec: "opus",
             numberOfChannels: 2,
-            sampleRate: 48000,
+            sampleRate: 44100,
             bitrate: 64000,
           }
     );
@@ -170,11 +169,11 @@ const events = {
       const currentFrame = Math.floor((currentTime / 1000) * fps);
       const key = currentTime > lastKeyframe + 2000;
       if (key) lastKeyframe = currentTime;
-      console.log(currentTime, key);
 
       const frame = new VideoFrame(canvas, {
         timestamp: (currentFrame * 1e6) / fps,
       });
+
       videoEncoder.encode(frame, { keyFrame: key });
 
       frame.close();
@@ -183,6 +182,7 @@ const events = {
   },
   AUDIO_ENCODE: (audioData: AudioData) => {
     if (audioEncoder) {
+      // console.log(audioEncoder.state);
       audioEncoder.encode(audioData);
       audioData.close();
     }

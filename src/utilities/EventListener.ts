@@ -5,7 +5,7 @@ export default class {
 
   on(event: string, callback: () => void) {
     return this.subject.subscribe((eventEmitted) => {
-      if (eventEmitted == event) {
+      if (eventEmitted === event) {
         callback();
       }
     });

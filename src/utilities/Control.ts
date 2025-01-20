@@ -26,6 +26,7 @@ const events = [
   "CHANGE_ZOOM_TIME",
   "CHANGE_MODE_LOOP",
   "CHANGE_FORMAT",
+  "CHANGE_FPS",
   "ENDING",
 ] as const;
 type TypeEvent = (typeof events)[number];
@@ -42,7 +43,7 @@ export default class Control {
   #selectResource: string | null = null;
   #state: TypeState = "STOP";
   #format: TypeFiles = "MP4";
-  fps = 60;
+  #fps = 60;
   width = 720;
   height = 420;
   background = "hsl(104, 44%, 24%)";
@@ -163,12 +164,23 @@ export default class Control {
     return this.#state;
   }
 
+  //fps
+  set fps(newValue: number) {
+    if (this.#fps !== newValue && newValue > 0) {
+      this.#fps = newValue;
+      this.fire("CHANGE_FPS");
+    }
+  }
+  get fps() {
+    return this.#fps;
+  }
+
   constructor() {
     if (window.AudioEncoder !== undefined) console.log("soport Audio Encoder");
     if (window.VideoEncoder !== undefined) console.log("soport Video Encoder");
     if (window.VideoFrame !== undefined) console.log("soport Video Frame");
     if (window.MediaStreamTrackProcessor !== undefined) console.log("soport MediaStreamTrackProcessor");
-    if (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1,mp4a.40.2")) console.log("soport export MP4");
+    if (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42001f,mp4a.40.2")) console.log("soport export MP4");
     if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,Opus")) console.log("soport export WEBM");
     this.container.width = this.width;
     this.container.height = this.height;
@@ -213,18 +225,19 @@ export default class Control {
         this.clock.setSeeking(this.timeStart || 0);
       }
 
-      this.draw(this.context, this.currentTime, this.state === "PLAYING");
       //!Ojo con este evento se dispara 60 veces por segundo
       this.fire("HOT_PLAYING");
+      this.draw(this.context, this.currentTime, this.state === "PLAYING").then((res) => {
+        requestAnimationFrame(() => this.emit());
+      });
     }
-    setTimeout(() => this.emit(), 1000 / this.fps);
   }
-  draw(context: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | WebWorker, currentTime: number, play: boolean) {
+  async draw(context: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | WebWorker, currentTime: number, play: boolean) {
     if (context instanceof WebWorker) {
       context.fire("PREPARATE", { background: this.background, currentTime });
-      this.#timeLines.toReversed().forEach((timeline) => {
-        timeline.emit(context, currentTime, play);
-      });
+      const promises = this.#timeLines.map((timeline) => timeline.emit(context, currentTime, play));
+      const data = await Promise.all(promises);
+      return data;
     } else {
       //addMutations & clear
       context.clearRect(0, 0, this.width, this.height);
@@ -241,10 +254,10 @@ export default class Control {
       context.restore();
 
       //DRAW
-      this.#timeLines.toReversed().forEach((timeline) => {
-        timeline.emit(context, currentTime, play);
-      });
+      const promises = this.#timeLines.map((timeline) => timeline.emit(context, currentTime, play));
       context.restore();
+      const data = await Promise.all(promises);
+      return data;
     }
   }
 
@@ -446,6 +459,7 @@ export default class Control {
       .then((res) => res.arrayBuffer())
       .then((bufferRaw) => new AudioContext().decodeAudioData(bufferRaw))
       .then((bufferAudio) => {
+        console.log("load audio");
         //Extraer Stram de AudioContext
         const audioNode = context.createMediaStreamDestination();
         temporalBuffer.buffer = bufferAudio;
@@ -470,7 +484,6 @@ export default class Control {
         setTimeout(() => {
           this.drawWorker();
           temporalBuffer.start();
-          this.clock.play();
         }, 30);
         // }
       });
@@ -483,12 +496,6 @@ export default class Control {
         const $sub = this.#worker.on("OUTPUT", () => {
           const output = this.#worker?.output;
           if (typeof output !== "number" && output) {
-            //Restart Services
-            this.state = "STOP";
-            this.#lastkey = 0;
-            this.clock.pause();
-            this.#timeLines.forEach((tl) => tl.recording(false));
-
             //Download
             const blob = new Blob([output]);
             const url = window.URL.createObjectURL(blob);
@@ -502,6 +509,14 @@ export default class Control {
 
             //time end
             console.timeEnd("record");
+
+            //Restart Services
+            this.state = "STOP";
+            this.#totalFrames = 0;
+            this.#currentFrame = 0;
+            this.#worker?.terminate();
+            this.#worker = null;
+            this.#timeLines.forEach((tl) => tl.recording(false));
           }
           $sub.unsubscribe();
         });
@@ -510,11 +525,13 @@ export default class Control {
       } else {
         const $sub = this.#worker.on("NEXT_FRAME", () => {
           $sub.unsubscribe();
-          requestAnimationFrame(() => this.drawWorker());
+          this.drawWorker();
         });
         const currentTime = (this.#currentFrame / this.#totalFrames) * this.duration;
+        const worker = this.#worker;
         this.draw(this.#worker, currentTime, true);
-        this.#worker.fire("PRINT_FRAME");
+        worker.fire("PRINT_FRAME");
+
         this.#currentFrame++;
       }
     }

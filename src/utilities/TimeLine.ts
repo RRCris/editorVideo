@@ -34,12 +34,16 @@ export default class TimeLine {
       res.recording(start);
     });
   }
-  emit(context: CanvasRenderingContext2D | WebWorker, seek: number, isPlaying: boolean) {
-    this.#resources.forEach((resource) => {
+  async emit(context: CanvasRenderingContext2D | WebWorker, seek: number, isPlaying: boolean) {
+    const promises = this.#resources.map((resource) => {
       if (context) {
         return resource.emit(context, seek, isPlaying);
       }
+      Promise.resolve();
     });
+
+    const result = await Promise.all(promises);
+    return result;
   }
 
   checkColisions(start: number, end: number, idExeption?: string) {

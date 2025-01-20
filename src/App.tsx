@@ -15,6 +15,7 @@ function App() {
   const [timeZoom, setTimeZoom] = useState(control.zoomTime);
   const [, setModeLoop] = useState(control.modeLoop);
   const [, setFormat] = useState(control.format);
+  const [, setFPS] = useState(control.fps);
 
   //HandleFiles
 
@@ -53,16 +54,17 @@ function App() {
     $subs.push(control.on("CHANGE_ZOOM_TIME", () => setTimeZoom(control.zoomTime)));
     $subs.push(control.on("CHANGE_MODE_LOOP", () => setModeLoop(control.modeLoop)));
     $subs.push(control.on("CHANGE_FORMAT", () => setFormat(control.format)));
+    $subs.push(control.on("CHANGE_FPS", () => setFPS(control.fps)));
     return () => $subs.forEach(($sub) => $sub.unsubscribe());
   }, []);
   return (
     <>
-      <div style={{ position: "fixed", bottom: 0, right: 0, zIndex: 10 }}>
+      <div>
         <div>
           <button onClick={() => control.reset()}>Restablecer</button>
           <label>
             Zoom
-            <input type="range" min={0} max={4} value={control.scale} onChange={(e) => (control.scale = parseInt(e.target.value))} />
+            <input type="range" min={0} max={500} value={control.scale * 100} onChange={(e) => (control.scale = parseInt(e.target.value) / 100)} />
           </label>
           <label>
             Offset X
@@ -96,6 +98,15 @@ function App() {
             <select value={control.format} onChange={(e) => (control.format = e.target.value)}>
               <option value="MP4">MP4</option>
               <option value="WEBM">WEBM</option>
+            </select>
+          </label>
+          <label>
+            FPS
+            <select value={control.fps} onChange={(e) => (control.fps = e.target.value)}>
+              <option value="24">24 (LOW)</option>
+              <option value="30">30 (MEDIUM)</option>
+              <option value="45">45 (STANDARD)</option>
+              <option value="60">60 (HIGH)</option>
             </select>
           </label>
         </div>

@@ -38,4 +38,8 @@ export default class WebWorker {
       throw new Error(`El evento de ${event} o esta en la lista de eventos del tpi ${this.type}`);
     }
   }
+
+  terminate() {
+    this.#worker.terminate();
+  }
 }

@@ -5,6 +5,11 @@ import TimeLine from "./TimeLine";
 import { presetsAnimations, TypeAnimationOptional } from "../data/presetsVideo";
 import WebWorker from "./WebWorker";
 
+interface TypeEmit {
+  frame: VideoFrame;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  animated: any;
+}
 export interface TypeObjectVideo {
   id: string;
   name: string;
@@ -750,129 +755,132 @@ export default class VideoResource {
     context.restore();
   }
   emit(context: CanvasRenderingContext2D | WebWorker, seek: number, isPlaying: boolean) {
-    //verificamos si esta a tiempo para reproduccir o estamos en preview
-    const timeleft = seek - this.offsetTime;
-    const durationLeft = this.#hiddenTimeEnd - this.#hiddenTimeStart;
+    return new Promise<string>((resolve, reject) => {
+      resolve("operated");
+      //verificamos si esta a tiempo para reproduccir o estamos en preview
+      const timeleft = seek - this.offsetTime;
+      const durationLeft = this.#hiddenTimeEnd - this.#hiddenTimeStart;
 
-    ///________________MAIN
-    if (timeleft >= 0 && timeleft < durationLeft) {
-      //Update Time
-      const idealTime = seek - this.offsetTime + this.hiddenTimeStart;
-      const offset = 50;
-      const curr = this.containerVideo.currentTime * 1000;
-      if (curr > idealTime + offset || curr < idealTime - offset || (!isPlaying && curr !== idealTime)) {
-        /**
-         * No se puede estar seteando currentTime constantemente por lo que  solo lo seteo
-         * cuando la diferencia entre el tiempo que deberia tener y el que tiene supera los 100 milisegundos
-         */
-        console.count("correction");
-        this.containerVideo.currentTime = idealTime / 1000; // esta en milisegundos y currentTime recibe segundos
-      }
-      //Playing Video
-      if (isPlaying) {
-        this.containerVideo.play();
-      } else {
-        this.containerVideo.pause();
-      }
-      //Animations
-      const procesed = this.processAnimations();
-      const tl = gsap.timeline({ paused: true });
-      const animated = procesed[0].properties;
-      procesed.forEach((frame, i) => {
-        if (frame.type === "relativeFront") {
-          const nextFrame = procesed[i + 1];
-          tl.fromTo(animated, frame.properties, { ...nextFrame.properties, duration: frame.duration, ease: frame.ease }, frame.timeStart);
-        } else if (frame.type === "absolute") {
-          tl.to(animated, { ...frame.properties, duration: frame.duration, ease: frame.ease }, frame.timeStart);
-        } else if (frame.type === "relativeBack") {
-          const backFrame = procesed[i - 1];
-          tl.fromTo(animated, backFrame.properties, { ...frame.properties, duration: frame.duration, ease: frame.ease }, frame.timeStart);
+      ///________________MAIN
+
+      if (timeleft >= 0 && timeleft < durationLeft) {
+        //Update Time
+        const idealTime = seek - this.offsetTime + this.hiddenTimeStart;
+        const offset = 50;
+        const curr = this.containerVideo.currentTime * 1000;
+        if (curr > idealTime + offset || curr < idealTime - offset || (!isPlaying && curr !== idealTime)) {
+          /**
+           * No se puede estar seteando currentTime constantemente por lo que  solo lo seteo
+           * cuando la diferencia entre el tiempo que deberia tener y el que tiene supera los 100 milisegundos
+           */
+
+          this.containerVideo.currentTime = idealTime / 1000; // esta en milisegundos y currentTime recibe segundos
         }
-      });
-      tl.seek((seek - this.offsetTime) / 1000);
-
-      if (context instanceof WebWorker) {
-        const frame = new VideoFrame(this.containerVideo, {
-          timestamp: 0,
+        //Playing Video
+        if (isPlaying) {
+          this.containerVideo.play();
+        } else {
+          this.containerVideo.pause();
+        }
+        //Animations
+        const procesed = this.processAnimations();
+        const tl = gsap.timeline({ paused: true });
+        const animated = procesed[0].properties;
+        procesed.forEach((frame, i) => {
+          if (frame.type === "relativeFront") {
+            const nextFrame = procesed[i + 1];
+            tl.fromTo(animated, frame.properties, { ...nextFrame.properties, duration: frame.duration, ease: frame.ease }, frame.timeStart);
+          } else if (frame.type === "absolute") {
+            tl.to(animated, { ...frame.properties, duration: frame.duration, ease: frame.ease }, frame.timeStart);
+          } else if (frame.type === "relativeBack") {
+            const backFrame = procesed[i - 1];
+            tl.fromTo(animated, backFrame.properties, { ...frame.properties, duration: frame.duration, ease: frame.ease }, frame.timeStart);
+          }
         });
-        context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
-      } else {
-        this.draw(context, animated);
+        tl.seek((seek - this.offsetTime) / 1000);
+
+        if (context instanceof WebWorker) {
+          const frame = new VideoFrame(this.containerVideo, {
+            timestamp: 0,
+          });
+          context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
+        } else {
+          this.draw(context, animated);
+        }
+
+        tl.kill();
+      }
+      //______________ANIMATION IN
+      else if (this.#animationInObject && timeleft < 0 && timeleft + this.animationInDuration >= 0) {
+        const duration = this.animationInDuration / 1000;
+        const seek = duration + timeleft / 1000;
+        const procesed = this.processAnimations();
+        const tl = gsap.timeline({ paused: true });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const animated: any = { ...procesed[0].properties, ...this.#animationInObject };
+        tl.to(animated, { ...procesed[0].properties, duration, ease: this.#animationInObject.ease });
+        tl.seek(seek);
+
+        //draw
+        if (context instanceof WebWorker) {
+          const frame = new VideoFrame(this.containerVideo, {
+            timestamp: 0,
+          });
+          context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
+        } else {
+          this.draw(context, animated);
+        }
+        tl.kill();
+      }
+      ///______________ANIMATION OUT
+      else if (this.#animationOutObject && timeleft >= durationLeft && timeleft - this.animationOutDuration < durationLeft) {
+        const seek = (timeleft - durationLeft) / 1000;
+        const duration = this.animationOutDuration / 1000;
+        const procesed = this.processAnimations().reverse();
+        const tl = gsap.timeline({ paused: true });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const animated: any = procesed[0].properties;
+        tl.to(animated, { ...this.#animationOutObject, duration, ease: this.#animationOutObject.ease });
+        tl.seek(seek);
+        //draw
+        if (context instanceof WebWorker) {
+          const frame = new VideoFrame(this.containerVideo, {
+            timestamp: 0,
+          });
+          context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
+        } else {
+          this.draw(context, animated);
+        }
       }
 
-      tl.kill();
-    }
-    //______________ANIMATION IN
-    else if (this.#animationInObject && timeleft < 0 && timeleft + this.animationInDuration >= 0) {
-      const duration = this.animationInDuration / 1000;
-      const seek = duration + timeleft / 1000;
-      const procesed = this.processAnimations();
-      const tl = gsap.timeline({ paused: true });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const animated: any = { ...procesed[0].properties, ...this.#animationInObject };
-      tl.to(animated, { ...procesed[0].properties, duration, ease: this.#animationInObject.ease });
-      tl.seek(seek);
+      //____________AXIS_HELPER
+      if (this.state === "PREVIEW" && !(context instanceof WebWorker)) {
+        const near = this.control?.getAxisNear(this.outputX, this.outputY, this.outputWidth, this.outputHeight, this.id);
+        if (near) {
+          context.save();
+          context.lineWidth = 5;
+          context.strokeStyle = "#73FFF3";
+          if (near.x !== null) {
+            context.beginPath();
+            context.moveTo(near.x + near.offX, 0);
+            context.lineTo(near.x + near.offX, this.control?.height || 0);
+            context.stroke();
+          }
+          if (near.y !== null) {
+            context.beginPath();
+            context.moveTo(0, near.y + near.offY);
+            context.lineTo(this.control?.width || 0, near.y + near.offY);
+            context.stroke();
+          }
+          context.restore();
+        }
 
-      //draw
-      if (context instanceof WebWorker) {
-        const frame = new VideoFrame(this.containerVideo, {
-          timestamp: 0,
-        });
-        context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
-      } else {
-        this.draw(context, animated);
-      }
-      tl.kill();
-    }
-    ///______________ANIMATION OUT
-    else if (this.#animationOutObject && timeleft >= durationLeft && timeleft - this.animationOutDuration < durationLeft) {
-      const seek = (timeleft - durationLeft) / 1000;
-      const duration = this.animationOutDuration / 1000;
-      const procesed = this.processAnimations().reverse();
-      const tl = gsap.timeline({ paused: true });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const animated: any = procesed[0].properties;
-      tl.to(animated, { ...this.#animationOutObject, duration, ease: this.#animationOutObject.ease });
-      tl.seek(seek);
-      //draw
-      if (context instanceof WebWorker) {
-        const frame = new VideoFrame(this.containerVideo, {
-          timestamp: 0,
-        });
-        context.fire("DRAW", { ...animated, _gsap: undefined, frame }, [frame]);
-      } else {
-        this.draw(context, animated);
-      }
-    }
-
-    //____________AXIS_HELPER
-    if (this.state === "PREVIEW" && !(context instanceof WebWorker)) {
-      const near = this.control?.getAxisNear(this.outputX, this.outputY, this.outputWidth, this.outputHeight, this.id);
-      if (near) {
         context.save();
-        context.lineWidth = 5;
-        context.strokeStyle = "#73FFF3";
-        if (near.x !== null) {
-          context.beginPath();
-          context.moveTo(near.x + near.offX, 0);
-          context.lineTo(near.x + near.offX, this.control?.height || 0);
-          context.stroke();
-        }
-        if (near.y !== null) {
-          context.beginPath();
-          context.moveTo(0, near.y + near.offY);
-          context.lineTo(this.control?.width || 0, near.y + near.offY);
-          context.stroke();
-        }
-        context.restore();
-      }
+        const animated = this.#animations[this.animationIndex];
+        context.translate(animated.outputX, animated.outputY);
+        context.rotate((animated.outputRotate * Math.PI) / 180);
 
-      context.save();
-      const animated = this.#animations[this.animationIndex];
-      context.translate(animated.outputX, animated.outputY);
-      context.rotate((animated.outputRotate * Math.PI) / 180);
-
-      context.filter = `
+        context.filter = `
       blur(${animated.blur}px) 
       brightness(${animated.brightness}%) 
       grayscale(${animated.grayscale}%) 
@@ -884,18 +892,21 @@ export default class VideoResource {
       opacity(${20}%)
       drop-shadow(${animated.shadowOffsetX}px ${animated.shadowOffsetY}px ${animated.shadowBlur}px ${animated.shadowColor})
       `;
-      context.drawImage(this.containerVideo, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
-      context.restore();
-    }
+        context.drawImage(this.containerVideo, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
+        context.restore();
+      }
 
-    //_______PAUSA
-    if (this.state !== "PREVIEW" && !(timeleft >= 0 && timeleft < durationLeft)) {
-      this.containerVideo.pause();
-      this.containerVideo.currentTime = 0;
-    }
+      //_______PAUSA
+      if (this.state !== "PREVIEW" && !(timeleft >= 0 && timeleft < durationLeft)) {
+        this.containerVideo.pause();
+        this.containerVideo.currentTime = 0;
+      }
+    });
   }
 
   load(url: string) {
+    this.containerVideo.addEventListener("canplay", () => console.log("canplay", true));
+    this.containerVideo.addEventListener("timeupdate", () => console.log("timeupdate", this.containerVideo.readyState > 2));
     //verificar tipo y compatibilidad
     //cargar en nuestro container
     this.containerVideo.addEventListener("loadeddata", () => {
