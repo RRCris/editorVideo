@@ -1,0 +1,31 @@
+button {
+  background-color: rgb(136, 226, 248);
+  color: black;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 10px 10px 10px #0003;
+
+  transition: transform 0.5s;
+}
+button:hover {
+  transform: scale(1.1);
+}
+button:active {
+  transform: scale(0.9);
+}
+
+*::-webkit-scrollbar {
+  width: 5px; /* width of the entire scrollbar */
+}
+
+*::-webkit-scrollbar-track {
+  background: rgb(0, 6, 97); /* color of the tracking area */
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: transparent; /* color of the scroll thumb */
+  border-radius: 20px; /* roundness of the scroll thumb */
+  border: 3px solid rgb(168, 235, 255); /* creates padding around scroll thumb */
+}

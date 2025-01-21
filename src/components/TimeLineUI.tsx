@@ -16,7 +16,7 @@ export default function TimeLineUI({ timeLine }: props) {
   }, []);
 
   return (
-    <div style={{ width: 500, background: "gray" }}>
+    <div style={{ width: 500, padding: "10px 20px" }}>
       <button onClick={() => timeLine.removeSelf()}>Remove Time Line</button>
       <button onClick={() => timeLine.addResourceFromInput()}>Add Resource</button>
       <button onClick={() => timeLine.control.reordenTimeLines(0, timeLine.id)}>to top</button>

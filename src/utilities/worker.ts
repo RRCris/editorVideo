@@ -130,7 +130,7 @@ const events = {
     currentTime = info.currentTime;
 
     if (context && width && height) {
-      context.clearRect(0, 0, width, height);
+      context.rect(0, 0, width, height);
 
       //Background;
       context.save();
@@ -159,7 +159,17 @@ const events = {
       opacity(${animated.opacity}%)
       drop-shadow(${animated.shadowOffsetX}px ${animated.shadowOffsetY}px ${animated.shadowBlur}px ${animated.shadowColor})
       `;
-      context.drawImage(frame, animated.cropImageX, animated.cropImageY, animated.cropImageW, animated.cropImageH, 0, 0, animated.outputWidth, animated.outputHeight);
+      context.drawImage(
+        frame,
+        animated.cropImageX,
+        animated.cropImageY,
+        animated.cropImageW,
+        animated.cropImageH,
+        0,
+        0,
+        animated.outputWidth,
+        animated.outputHeight
+      );
       context.restore();
       frame.close();
     }

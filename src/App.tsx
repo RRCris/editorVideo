@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Control from "./utilities/Control";
 import { Subscription } from "rxjs";
 import TimeLineUI from "./components/TimeLineUI";
+import { button, useControls } from "leva";
+
 function App() {
   const refContainer = useRef<HTMLDivElement>(null);
   const refBar = useRef<HTMLInputElement>(null);
@@ -57,62 +59,66 @@ function App() {
     $subs.push(control.on("CHANGE_FPS", () => setFPS(control.fps)));
     return () => $subs.forEach(($sub) => $sub.unsubscribe());
   }, []);
+
+  useControls("Reproduccion", {
+    Loop: { value: control.modeLoop, onChange: (v) => (control.modeLoop = v) },
+    "Play/Pause": button(() => (control.state === "STOP" ? control.play() : control.pause())),
+  });
+  useControls("Editor", {
+    "scale time": {
+      value: control.scale,
+      min: 0,
+      max: 100,
+      onChange: (newValue) => (control.zoomTime = newValue),
+    },
+    zoom: {
+      value: control.scale,
+      min: 0,
+      max: 3,
+      step: 0.01,
+      onChange: (newValue) => (control.scale = newValue),
+    },
+
+    offsets: {
+      value: { x: control.offsetX, y: control.offsetY },
+      step: 3,
+      onChange: ({ x, y }) => {
+        control.offsetX = x;
+        control.offsetY = y;
+      },
+    },
+    restablecer: button(() => control.reset()),
+    "Add TimeLine": button(() => control.addTimeLine()),
+  });
+  useControls("Recording", {
+    Format: { options: ["MP4", "WEBM"], value: control.format, onChange: (v) => (control.format = v) },
+    FPS: { options: [24, 30, 45, 60], value: control.fps, onChange: (v) => (control.fps = v) },
+    Recording: button(handleRecording),
+  });
+
   return (
     <>
       <div>
-        <div>
-          <button onClick={() => control.reset()}>Restablecer</button>
-          <label>
-            Zoom
-            <input type="range" min={0} max={500} value={control.scale * 100} onChange={(e) => (control.scale = parseInt(e.target.value) / 100)} />
-          </label>
-          <label>
-            Offset X
-            <input type="range" min={-300} max={300} value={control.offsetX} onChange={(e) => (control.offsetX = parseInt(e.target.value))} />
-          </label>
-          <label>
-            Offset Y
-            <input type="range" min={-300} max={300} value={control.offsetY} onChange={(e) => (control.offsetY = parseInt(e.target.value))} />
-          </label>
-        </div>
         <div ref={refContainer} />
         <div>
-          <button onClick={() => control.play()}>Play</button>
-          <button onClick={() => control.pause()}>Pause</button>
-          <button onClick={handleRecording}>Records MAIN</button>
-          <button onClick={() => control.setupWorker()}>Records WORKER</button>
-          <button onClick={() => control.addTimeLine()}>Add Time Line</button>
-          <input type="range" ref={refBar} min={0} max={control.duration} onChange={(e) => control.setSeek(parseInt(e.target.value))} />
-        </div>
-        <div>
-          <label>
-            time Zoom
-            <input type="range" min={1} max={100} value={control.zoomTime} onChange={(e) => (control.zoomTime = parseInt(e.target.value))} />
-          </label>
-          <label>
-            Mode Loop
-            <input type="checkbox" checked={control.modeLoop} onChange={(e) => (control.modeLoop = e.target.checked)} />
-          </label>
-          <label>
-            Format
-            <select value={control.format} onChange={(e) => (control.format = e.target.value)}>
-              <option value="MP4">MP4</option>
-              <option value="WEBM">WEBM</option>
-            </select>
-          </label>
-          <label>
-            FPS
-            <select value={control.fps} onChange={(e) => (control.fps = e.target.value)}>
-              <option value="24">24 (LOW)</option>
-              <option value="30">30 (MEDIUM)</option>
-              <option value="45">45 (STANDARD)</option>
-              <option value="60">60 (HIGH)</option>
-            </select>
-          </label>
+          <input
+            type="range"
+            ref={refBar}
+            min={0}
+            max={control.duration}
+            onChange={(e) => control.setSeek(parseInt(e.target.value))}
+          />
         </div>
       </div>
-      <div style={{ width: 500, overflow: "scroll" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, width: duration / timeZoom, background: "gray" }}>
+      <div style={{ width: 600, overflow: "auto", background: "#99C" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            width: duration / timeZoom,
+          }}
+        >
           {timeLines.map((line) => (
             <TimeLineUI timeLine={line} key={line.id} />
           ))}

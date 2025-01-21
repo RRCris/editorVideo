@@ -46,7 +46,7 @@ export default class Control {
   #fps = 60;
   width = 720;
   height = 420;
-  background = "hsl(104, 44%, 24%)";
+  background = "hsl(0, 0.00%, 92.50%)";
   timeStart: number | null = null;
   timeEnd: number | null = null;
   #modeLoop: boolean = false;
@@ -180,7 +180,8 @@ export default class Control {
     if (window.VideoEncoder !== undefined) console.log("soport Video Encoder");
     if (window.VideoFrame !== undefined) console.log("soport Video Frame");
     if (window.MediaStreamTrackProcessor !== undefined) console.log("soport MediaStreamTrackProcessor");
-    if (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42001f,mp4a.40.2")) console.log("soport export MP4");
+    if (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42001f,mp4a.40.2"))
+      console.log("soport export MP4");
     if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,Opus")) console.log("soport export WEBM");
     this.container.width = this.width;
     this.container.height = this.height;
@@ -232,7 +233,11 @@ export default class Control {
       });
     }
   }
-  async draw(context: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | WebWorker, currentTime: number, play: boolean) {
+  async draw(
+    context: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | WebWorker,
+    currentTime: number,
+    play: boolean
+  ) {
     if (context instanceof WebWorker) {
       context.fire("PREPARATE", { background: this.background, currentTime });
       const promises = this.#timeLines.map((timeline) => timeline.emit(context, currentTime, play));
@@ -240,7 +245,11 @@ export default class Control {
       return data;
     } else {
       //addMutations & clear
-      context.clearRect(0, 0, this.width, this.height);
+
+      context.save();
+      context.fillStyle = "#666";
+      context.fillRect(0, 0, this.width, this.height);
+      context.restore();
       context.save();
       if (this.state !== "RECORDING") {
         context.scale(this.scale, this.scale);
@@ -389,7 +398,13 @@ export default class Control {
       });
   }
   async loopRecord() {
-    if (this.#contextRecord && this.#canvasRecord && this.#videoEncoder && this.#muxerRecord && this.#audioEncoder) {
+    if (
+      this.#contextRecord &&
+      this.#canvasRecord &&
+      this.#videoEncoder &&
+      this.#muxerRecord &&
+      this.#audioEncoder
+    ) {
       //draw
       const currentTime = this.clock.getElapsedTime();
       const currentFrame = Math.floor((currentTime / 1000) * this.fps);
@@ -468,7 +483,12 @@ export default class Control {
 
         //Worker
         this.#worker = new WebWorker();
-        this.#worker.fire("INIT", { width: this.width, height: this.height, format: this.format, fps: this.fps });
+        this.#worker.fire("INIT", {
+          width: this.width,
+          height: this.height,
+          format: this.format,
+          fps: this.fps,
+        });
 
         //Procesar Audio
         const worker = this.#worker;
